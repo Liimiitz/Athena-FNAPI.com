@@ -204,10 +204,16 @@ class Athena:
             category = item["items"][0]["type"]["value"].lower()
             price = item["finalPrice"]
 
+
             if (item["items"][0]["images"]["featured"]):
                 icon = item["items"][0]["images"]["featured"]
             else:
                 icon = item["items"][0]["images"]["icon"]
+
+            if(item["bundle"]):
+                icon = item["bundle"]["image"]
+                name = item["bundle"]["name"].lower()
+                category = "Bundle".lower()
         except Exception as e:
             log.error(f"Failed to parse item {name}, {e}")
 
@@ -288,13 +294,18 @@ class Athena:
         card.paste(vbucks,ImageUtil.CenterX(self, (vbucks.width + (textWidth + 5)), card.width, 350),vbucks)
 
         font = ImageUtil.Font(self, 40)
-        textWidth, _ = font.getsize(name.upper().replace(" OUTFIT", "").replace(" PICKAXE", "").replace(" BUNDLE", ""))
+        itemName = name.upper().replace(" OUTFIT", "").replace(" PICKAXE", "").replace(" BUNDLE", "")
+
+        if(category == "bundle"):
+            itemName = name.upper().replace(" BUNDLE", "")
+
+        textWidth, _ = font.getsize(itemName)
 
         change = 0
         if textWidth >= 270:
             # Ensure that the item name does not overflow
-            font, textWidth, change = ImageUtil.FitTextX(self, name.upper().replace(" OUTFIT", "").replace(" PICKAXE", "").replace(" BUNDLE", ""), 40, 250)
-        canvas.text(ImageUtil.CenterX(self, textWidth, card.width, (400 + (change / 2))), name.upper().replace(" OUTFIT", "").replace(" PICKAXE", "").replace(" BUNDLE", ""), (255, 255, 255), font=font)
+            font, textWidth, change = ImageUtil.FitTextX(self, itemName, 40, 250)
+        canvas.text(ImageUtil.CenterX(self, textWidth, card.width, (400 + (change / 2))), itemName, (255, 255, 255), font=font)
       
         font = ImageUtil.Font(self, 40)
         textWidth, _ = font.getsize(f"{rarity.upper()} {category.upper()}")
