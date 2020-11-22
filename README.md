@@ -1,5 +1,4 @@
 # Athena
-Original Creator: [EthanC](https://github.com/EthanC/Athena)
 
 Athena is a utility which generates the current Fortnite Item Shop into a stylized image and shares it on Twitter.
 
@@ -39,3 +38,4 @@ python itemshop.py
 ## Credits
 
 - Item Shop data provided by [Fortnite-API](https://fortnite-api.com/)
+- Original Creator: [EthanC](https://github.com/EthanC/Athena)
