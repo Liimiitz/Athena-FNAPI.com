@@ -3,7 +3,7 @@
 Athena is a utility which generates the current Fortnite Item Shop into a stylized image and shares it on Twitter.
 
 <p align="center">
-    <img src="https://i.imgur.com/gM017rO.jpg" width="650px" draggable="false">
+    <img src="https://i.imgur.com/G8dyvm9.jpg" width="650px" draggable="false">
 </p>
 
 ## Requirements
