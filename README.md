@@ -1,5 +1,6 @@
 # Athena
 Original Creator: [EthanC](https://github.com/EthanC/Athena)
+
 Athena is a utility which generates the current Fortnite Item Shop into a stylized image and shares it on Twitter.
 
 <p align="center">
