@@ -20,7 +20,7 @@ class Athena:
 
     def main(self):
         print("Athena - Fortnite Item Shop Generator")
-        print("https://github.com/Liimiitz/Athena\nhttps://github.com/EthanC/Athena\n")
+        print("https://github.com/Liimiitz/Athena\n")
 
         initialized = Athena.LoadConfiguration(self)
 
@@ -40,9 +40,7 @@ class Athena:
                 itemShop = json.loads(itemShop)["data"]
 
                 # Strip time from the timestamp, we only need the date
-                date = Utility.ISOtoHuman(
-                    self, itemShop["date"].split("T")[0], self.language
-                )
+                date = Utility.ISOtoHuman(self, itemShop["date"].split("T")[0], self.language)
                 log.info(f"Retrieved Item Shop for {date}")
 
                 shopImage = Athena.GenerateImage(self, date, itemShop)
@@ -123,7 +121,7 @@ class Athena:
         # Item Shop when there are 3 columns for both Featured and Daily.
         # This allows us to determine the image height.
 
-        shopImage = Image.new("RGBA", (width, (530 * height) + 350))
+        shopImage = Image.new("RGB", (width, (530 * height) + 350))
 
         try:
             background = ImageUtil.Open(self, "background.png")
@@ -188,7 +186,7 @@ class Athena:
                 i += 1
 
         try:
-            shopImage.save("itemshop.png")
+            shopImage.save("itemshop.jpeg", optimize=True,quality=85)
             log.info("Generated Item Shop image")
 
             return True
@@ -319,7 +317,7 @@ class Athena:
 
     def Tweet(self, date: str):
         """
-        Tweet the current `itemshop.png` local file to Twitter using the credentials provided
+        Tweet the current `Item Shop` image to Twitter using the credentials provided
         in `configuration.json`.
         """
 
@@ -332,6 +330,7 @@ class Athena:
             )
 
             twitterAPI.VerifyCredentials()
+
         except Exception as e:
             log.critical(f"Failed to authenticate with Twitter, {e}")
 
@@ -340,16 +339,16 @@ class Athena:
         body = f"Battle Royale - #Fortnite Item Shop | {date}"
 
         if self.supportACreator is not None:
-            body = f"{body}\n\nSupport-a-Creator Code: {self.supportACreator}"
+            body = f"{body}\n\nUse code: {self.supportACreator} in the item shop!"
 
         try:
-            with open("itemshop.png", "rb") as shopImage:
+
+            with open("itemshop.jpeg", "rb") as shopImage:
                 twitterAPI.PostUpdate(body, media=shopImage)
 
             log.info("Tweeted Item Shop")
         except Exception as e:
             log.critical(f"Failed to Tweet Item Shop, {e}")
-
 
 if __name__ == "__main__":
     try:

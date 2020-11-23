@@ -1,6 +1,7 @@
 import json
 import locale
 import logging
+
 from datetime import datetime
 
 import requests
