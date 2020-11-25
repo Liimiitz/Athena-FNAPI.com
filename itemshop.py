@@ -223,6 +223,8 @@ class Athena:
             blendColor = (234, 141, 35)
         elif rarity == "legendary":
             blendColor = (211, 120, 65)
+        elif rarity == "slurp":
+            blendColor = (0, 233, 176)
         elif rarity == "dark":
             blendColor = (251, 34, 223)
         elif rarity == "starwars":
