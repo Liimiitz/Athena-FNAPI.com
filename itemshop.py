@@ -88,8 +88,10 @@ class Athena:
         try:
             featured = itemShop["featured"]["entries"]
             daily = itemShop["daily"]["entries"]
-
-            log.info(f"Featured: {len(featured)}, Daily: {len(daily)}")
+            
+            if (len(featured) <= 0) or (len(daily) <= 0):
+                raise Exception(
+                    f"Featured: {len(featured)}, Daily: {len(daily)}")
 
             if (len(featured) >= 1):
                 rowsDaily = 3
