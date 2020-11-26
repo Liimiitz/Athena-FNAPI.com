@@ -17,6 +17,7 @@ coloredlogs.install(
 
 today = date.today()
 
+
 class Athena:
     """Fortnite Item Shop Generator."""
 
@@ -33,7 +34,7 @@ class Athena:
 
             itemShop = Utility.GET(
                 self,
-                "https://fortnite-api.com/v2/shop/br/combined",
+                "https://fortnite-api.com/v2/shop/br",
                 {"x-api-key": self.apiKey},
                 {"language": self.language},
             )
@@ -86,9 +87,18 @@ class Athena:
         """
 
         try:
-            featured = itemShop["featured"]["entries"]
-            daily = itemShop["daily"]["entries"]
+            specialFeatured = itemShop["specialFeatured"]
+            specialDaily = itemShop["specialDaily"]
+            featured = itemShop["featured"]
+            daily = itemShop["daily"]
             
+            if daily is not None:
+                daily = daily["entries"] + specialDaily["entries"]
+                featured = featured["entries"] + specialFeatured["entries"]
+            else:
+                daily = featured["entries"]
+                featured = specialFeatured["entries"]
+
             if (len(featured) <= 0) or (len(daily) <= 0):
                 raise Exception(
                     f"Featured: {len(featured)}, Daily: {len(daily)}")
@@ -146,9 +156,12 @@ class Athena:
         canvas.text(ImageUtil.CenterX(self, textWidth, shopImage.width, 30), "FORTNITE ITEM SHOP ROTATION", (255, 255, 255), font=font)
         textWidth, _ = font.getsize(date.upper())
         canvas.text(ImageUtil.CenterX(self, textWidth, shopImage.width, 120), date.upper(), (255, 255, 255), font=font)
-        
-        canvas.text((20, 240), "FEATURED", (255, 255, 255), font=font, anchor=None, spacing=4, align="left")
-        canvas.text((shopImage.width - 230, 240), "DAILY", (255, 255, 255), font=font, anchor=None, spacing=4, align="right")
+
+        if itemShop["featured"] is not None:
+        	canvas.text((20, 240), "FEATURED", (255, 255, 255), font=font, anchor=None, spacing=4, align="left")
+
+        if itemShop["daily"] is not None:
+            canvas.text((shopImage.width - 230, 240), "DAILY", (255, 255, 255), font=font, anchor=None, spacing=4, align="right")
 
         # Track grid position
         i = 0
