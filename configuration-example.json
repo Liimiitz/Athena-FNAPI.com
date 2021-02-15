@@ -1,7 +1,9 @@
 {
     "language": "en",
     "sendOnStart": false,
-    "checkForUpdates": 10,
+    "fortniteAPI": {
+        "apiKey": "not-required"
+    },
     "supportACreator": "Your-Support-A-Creator",
     "twitter": {
         "enabled": false,

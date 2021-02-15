@@ -13,12 +13,16 @@ class Utility:
     """Class containing utilitarian functions intended to reduce duplicate code."""
     itemshop_url = "https://fortnite-api.com/v2/shop/br/combined"
 
-    def get_itemshop(self, language: str = "en") -> requests.Response:
+    def get_itemshop(self, api_key: str, language: str = "en") -> requests.Response:
         """
         Return the response of a successful HTTP GET request to the specified
         URL with the optionally provided header values.
         """
-        return requests.get(self.itemshop_url, params={"language": language})
+        return requests.get(
+            self.itemshop_url,
+            headers={"x-api-key": api_key},
+            params={"language": language}
+        )
 
     def ISOtoHuman(self, date: str, language: str):
         """Return the provided ISO8601 timestamp in human-readable format."""

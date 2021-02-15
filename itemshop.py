@@ -24,20 +24,30 @@ class Athena:
         print("Athena - Fortnite Item Shop Generator")
         print("https://github.com/Liimiitz/Athena-FNAPI.com\n")
 
-        if self.LoadConfiguration():
-            # Update hashes on first load if sendOnStart was disabled
-            if not self.sendOnStart:
-                itemshop = self.fetch_itemshop_data()
-                if len(itemshop.keys()) > 0:
+        if not self.LoadConfiguration():
+            return
+
+        # Update hashes on first load if sendOnStart was disabled
+        if self.sendOnStart is False:
+            itemshop = self.utility.get_itemshop(self.apiKey, self.language)
+            if itemshop.status_code == 200:
+                self.itemshop_hash = itemshop.json().get("data", {}).get("hash")
+                log.info(f"Hashes updated. New hash code is {self.itemshop_hash}")
+            else:
+                log.critical(f"Failed to GET ItemShop (HTTP {itemshop.status_code})")
+                return
+
+        log.info("Loop started. checking for updates")
+
+        # infinite loop to get updates every X second and update files on shop change
+        while True:
+            itemshop = self.utility.get_itemshop(self.apiKey, self.language)
+            if itemshop.status_code == 200:
+                itemshop = itemshop.json().get("data", {})
+                if self.itemshop_hash != itemshop.get("hash"):
                     self.itemshop_hash = itemshop.get("hash")
                     log.info(f"Hashes updated. New hash code is {self.itemshop_hash}")
-                else:
-                    return
 
-            # infinite loop to get updates every X second and update files on shop change
-            while True:
-                itemshop = self.fetch_itemshop_data()
-                if len(itemshop.keys()) > 0 and self.itemshop_hash != itemshop.get("hash"):
                     # Strip time from the timestamp, we only need the date
                     today_date = self.utility.ISOtoHuman(date.today(), self.language)
                     log.info(f"Retrieved Item Shop for {today_date}")
@@ -46,18 +56,8 @@ class Athena:
                         self.itemshop_hash = itemshop.get("hash")
                         if self.twitterEnabled:
                             self.Tweet(today_date)
-                else:
-                    log.info("Data checked, nothing was changed.")
 
-                sleep(self.checkForUpdates)
-
-    def fetch_itemshop_data(self) -> dict:
-        itemshop = self.utility.get_itemshop(self.language)
-        if itemshop.status_code == 200:
-            return itemshop.json().get("data", {})
-        else:
-            log.critical(f"Failed to GET ItemShop (HTTP {itemshop.status_code})")
-            return {}
+            sleep(15)
 
     def LoadConfiguration(self) -> bool:
         """
@@ -73,6 +73,7 @@ class Athena:
             self.language = configuration.get("language", "en")
             self.sendOnStart = configuration.get("sendOnStart", False)
             self.checkForUpdates = configuration.get("checkForUpdates", 10)
+            self.apiKey = configuration.get("fortniteAPI", {}).get("apiKey")
             self.supportACreator = configuration.get("supportACreator")
 
             twitter_data = configuration.get("twitter", {})
