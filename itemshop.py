@@ -1,83 +1,94 @@
 import json
 import logging
-from math import ceil
 from sys import exit
+from math import ceil
 from time import sleep
 from datetime import date
 
-import coloredlogs
 import twitter
+import coloredlogs
 from PIL import Image, ImageDraw
 
 from util import ImageUtil, Utility
 
 log = logging.getLogger(__name__)
-coloredlogs.install(
-    level="INFO", fmt="[%(asctime)s] %(message)s", datefmt="%I:%M:%S")
-
-today = date.today()
+coloredlogs.install(level="INFO", fmt="[%(asctime)s] %(message)s", datefmt="%I:%M:%S")
 
 
 class Athena:
     """Fortnite Item Shop Generator."""
+    utility = Utility()
+    itemshop_hash: str = None
 
-    def main(self):
+    def __init__(self) -> None:
         print("Athena - Fortnite Item Shop Generator")
         print("https://github.com/Liimiitz/Athena-FNAPI.com\n")
 
-        initialized = Athena.LoadConfiguration(self)
+        if self.LoadConfiguration():
+            # Update hashes on first load if sendOnStart was disabled
+            if not self.sendOnStart:
+                itemshop = self.fetch_itemshop_data()
+                if len(itemshop.keys()) > 0:
+                    self.itemshop_hash = itemshop.get("hash")
+                    log.info(f"Hashes updated. New hash code is {self.itemshop_hash}")
+                else:
+                    return
 
-        if initialized is True:
-            if self.delay > 0:
-                log.info(f"Delaying process start for {self.delay}s...")
-                sleep(self.delay)
+            # infinite loop to get updates every X second and update files on shop change
+            while True:
+                itemshop = self.fetch_itemshop_data()
+                if len(itemshop.keys()) > 0 and self.itemshop_hash != itemshop.get("hash"):
+                    # Strip time from the timestamp, we only need the date
+                    today_date = self.utility.ISOtoHuman(date.today(), self.language)
+                    log.info(f"Retrieved Item Shop for {today_date}")
 
-            itemShop = Utility.GET(
-                self,
-                "https://fortnite-api.com/v2/shop/br/combined",
-                {"x-api-key": self.apiKey},
-                {"language": self.language},
-            )
+                    if self.GenerateImage(today_date, itemshop):
+                        self.itemshop_hash = itemshop.get("hash")
+                        if self.twitterEnabled:
+                            self.Tweet(today_date)
+                else:
+                    log.info("Data checked, nothing was changed.")
 
-            if itemShop is not None:
-                itemShop = json.loads(itemShop)["data"]
+                sleep(self.checkForUpdates)
 
-                # Strip time from the timestamp, we only need the date
-                date = Utility.ISOtoHuman(self, today, self.language)
-                log.info(f"Retrieved Item Shop for {date}")
+    def fetch_itemshop_data(self) -> dict:
+        itemshop = self.utility.get_itemshop(self.language)
+        if itemshop.status_code == 200:
+            return itemshop.json().get("data", {})
+        else:
+            log.critical(f"Failed to GET ItemShop (HTTP {itemshop.status_code})")
+            return {}
 
-                shopImage = Athena.GenerateImage(self, date, itemShop)
-
-                if shopImage is True:
-                    if self.twitterEnabled is True:
-                        Athena.Tweet(self, date)
-
-    def LoadConfiguration(self):
+    def LoadConfiguration(self) -> bool:
         """
         Set the configuration values specified in configuration.json
 
         Return True if configuration sucessfully loaded.
         """
 
-        configuration = json.loads(
-            Utility.ReadFile(self, "configuration", "json"))
+        configuration = json.loads(self.utility.ReadFile("configuration", "json"))
 
         try:
-            self.delay = configuration["delayStart"]
-            self.apiKey = configuration["fortniteAPI"]["apiKey"]
-            self.language = configuration["language"]
-            self.supportACreator = configuration["supportACreator"]
-            self.twitterEnabled = configuration["twitter"]["enabled"]
-            self.twitterAPIKey = configuration["twitter"]["apiKey"]
-            self.twitterAPISecret = configuration["twitter"]["apiSecret"]
-            self.twitterAccessToken = configuration["twitter"]["accessToken"]
-            self.twitterAccessSecret = configuration["twitter"]["accessSecret"]
+            # self.delay = configuration.get("delayStart", 0)
+            self.language = configuration.get("language", "en")
+            self.sendOnStart = configuration.get("sendOnStart", False)
+            self.checkForUpdates = configuration.get("checkForUpdates", 10)
+            self.supportACreator = configuration.get("supportACreator")
+
+            twitter_data = configuration.get("twitter", {})
+            self.twitterEnabled = twitter_data.get("enabled", False)
+            self.twitterAPIKey = twitter_data.get("apiKey")
+            self.twitterAPISecret = twitter_data.get("apiSecret")
+            self.twitterAccessToken = twitter_data.get("accessToken")
+            self.twitterAccessSecret = twitter_data.get("accessSecret")
 
             log.info("Loaded configuration")
 
             return True
         except Exception as e:
             log.critical(f"Failed to load configuration, {e}")
+
+        return False
 
     def GenerateImage(self, date: str, itemShop: dict):
         """
@@ -155,7 +166,7 @@ class Athena:
         canvas.text(ImageUtil.CenterX(self, textWidth, shopImage.width, 120), date.upper(), (255, 255, 255), font=font)
 
         if itemShop["featured"] is not None:
-        	canvas.text((20, 240), "FEATURED", (255, 255, 255), font=font, anchor=None, spacing=4, align="left")
+            canvas.text((20, 240), "FEATURED", (255, 255, 255), font=font, anchor=None, spacing=4, align="left")
 
         if itemShop["daily"] is not None:
             canvas.text((shopImage.width - 230, 240), "DAILY", (255, 255, 255), font=font, anchor=None, spacing=4, align="right")
@@ -197,7 +208,7 @@ class Athena:
                 i += 1
 
         try:
-            shopImage.save("itemshop.jpeg", optimize=True,quality=85)
+            shopImage.save("itemshop.jpeg", optimize=True, quality=85)
             log.info("Generated Item Shop image")
 
             return True
@@ -212,7 +223,6 @@ class Athena:
             rarity = item["items"][0]["rarity"]["value"].lower()
             category = item["items"][0]["type"]["value"].lower()
             price = item["finalPrice"]
-
 
             if (item["items"][0]["images"]["featured"]):
                 icon = item["items"][0]["images"]["featured"]
@@ -249,7 +259,7 @@ class Athena:
         elif rarity == "shadow":
             blendColor = (113, 113, 113)
         elif rarity == "gaminglegends":
-            blendColor = (117,129,209)
+            blendColor = (117, 129, 209)
             rarity = "GamingLegends"
         elif rarity == "epic":
             blendColor = (177, 91, 226)
@@ -305,7 +315,7 @@ class Athena:
         textWidth, _ = font.getsize(price)
 
         canvas.text(ImageUtil.CenterX(self, ((textWidth - 5) - vbucks.width), card.width, 347), price, (255, 255, 255), font=font)
-        card.paste(vbucks,ImageUtil.CenterX(self, (vbucks.width + (textWidth + 5)), card.width, 350),vbucks)
+        card.paste(vbucks, ImageUtil.CenterX(self, (vbucks.width + (textWidth + 5)), card.width, 350), vbucks)
 
         font = ImageUtil.Font(self, 40)
         itemName = name.upper().replace(" OUTFIT", "").replace(" PICKAXE", "").replace(" BUNDLE", "")
@@ -320,10 +330,10 @@ class Athena:
             # Ensure that the item name does not overflow
             font, textWidth, change = ImageUtil.FitTextX(self, itemName, 40, 260)
         canvas.text(ImageUtil.CenterX(self, textWidth, card.width, (400 + (change / 2))), itemName, (255, 255, 255), font=font)
-      
+
         font = ImageUtil.Font(self, 40)
         textWidth, _ = font.getsize(f"{category.upper()}")
-        
+
         change = 0
         if textWidth >= 280:
             # Ensure that the item rarity/type does not overflow
@@ -366,9 +376,10 @@ class Athena:
         except Exception as e:
             log.critical(f"Failed to Tweet Item Shop, {e}")
 
+
 if __name__ == "__main__":
     try:
-        Athena.main(Athena)
+        Athena()
     except KeyboardInterrupt:
         log.info("Exiting...")
         exit()

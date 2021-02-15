@@ -1,4 +1,3 @@
-import json
 import locale
 import logging
 
@@ -12,25 +11,14 @@ log = logging.getLogger(__name__)
 
 class Utility:
     """Class containing utilitarian functions intended to reduce duplicate code."""
+    itemshop_url = "https://fortnite-api.com/v2/shop/br/combined"
 
-    def GET(self, url: str, headers: dict, parameters: dict = {"language": "en"}):
+    def get_itemshop(self, language: str = "en") -> requests.Response:
         """
         Return the response of a successful HTTP GET request to the specified
         URL with the optionally provided header values.
         """
-
-        res = requests.get(url, headers=headers, params=parameters)
-
-        # HTTP 200 (OK)
-        if res.status_code == 200:
-            return res.text
-        else:
-            log.critical(f"Failed to GET {url} (HTTP {res.status_code})")
-
-    def nowISO(self):
-        """Return the current utc time in ISO8601 timestamp format."""
-
-        return datetime.utcnow()
+        return requests.get(self.itemshop_url, params={"language": language})
 
     def ISOtoHuman(self, date: str, language: str):
         """Return the provided ISO8601 timestamp in human-readable format."""
