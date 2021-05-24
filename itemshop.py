@@ -1,128 +1,89 @@
-import json
-import logging
-from sys import exit
-from math import ceil
-from time import sleep
-from datetime import date
-
+import time
 import twitter
+import logging
 import coloredlogs
+from math import ceil
 from PIL import Image, ImageDraw
-
-from util import ImageUtil, Utility
+from utilty import ConfgFile, APITracker, ImageUtility, get_date
 
 log = logging.getLogger(__name__)
 coloredlogs.install(level="INFO", fmt="[%(asctime)s] %(message)s", datefmt="%I:%M:%S")
 
 
 class Athena:
-    """Fortnite Item Shop Generator."""
-    utility = Utility()
-    itemshop_hash: str = None
+    config: ConfgFile
+    tracker: APITracker
+    image_utility: ImageUtility
 
     def __init__(self) -> None:
-        print("Athena - Fortnite Item Shop Generator")
-        print("https://github.com/Liimiitz/Athena-FNAPI.com\n")
+        log.info("<  Athena - Fortnite Item Shop Generator   >")
+        log.info("<      Forked from: Github => @EthanC      >")
+        log.info("< Contributed by: Liimiitz & MR-AliHaashemi>")
+        log.info("< https://github.com/Liimiitz/Athena-FNAPI.com >")
 
-        if not self.LoadConfiguration():
+        self.config = ConfgFile()
+        if not self.config.load_config():
             return
+        self.tracker = APITracker(self.config.api_key, self.config.language)
+        self.image_utility = ImageUtility()
 
-        # Update hashes on first load if sendOnStart was disabled
-        if self.sendOnStart is False:
-            itemshop = self.utility.get_itemshop(self.apiKey, self.language)
-            if itemshop.status_code == 200:
-                self.itemshop_hash = itemshop.json().get("data", {}).get("hash")
-                log.info(f"Hashes updated. New hash code is {self.itemshop_hash}")
-            else:
-                log.critical(f"Failed to GET ItemShop (HTTP {itemshop.status_code})")
-                return
+        self.check_for_initial_load()
+        self.track_updates()
 
-        log.info("Loop started. checking for updates")
+    def check_for_initial_load(self):
+        if not self.config.send_on_start:
+            is_loaded = self.tracker.initial_load()
+            # Just to make sure it's loaded
+            while not is_loaded:
+                log.error("Athena => Initial load faild, trying again in 5 seconds...")
+                time.sleep(5)
+                is_loaded = self.tracker.initial_load()
+            log.info("Athena => Initial load => Done.")
 
-        # infinite loop to get updates every X second and update files on shop change
+    def track_updates(self):
+        log.info("Athena => Tracker started! Waiting for updates...")
         while True:
-            itemshop = self.utility.get_itemshop(self.apiKey, self.language)
-            if itemshop.status_code == 200:
-                itemshop = itemshop.json().get("data", {})
-                if self.itemshop_hash != itemshop.get("hash"):
-                    self.itemshop_hash = itemshop.get("hash")
-                    log.info(f"Hashes updated. New hash code is {self.itemshop_hash}")
+            # try:
+            new_hash, data = self.tracker.get_update()
+            if new_hash is not None:
+                date = get_date(self.config.language)
+                log.info(f"Athena => Update detected => hash: {new_hash}")
+                log.info(f"Athena => Generating image for {date}")
+                start = time.time_ns()
+                if self.generate_image(date, data.get("data", {})):
+                    log.info(f"Athena => Image Generated in => {((time.time_ns()-start)/1000000000)}")
 
-                    # Strip time from the timestamp, we only need the date
-                    today_date = self.utility.ISOtoHuman(date.today(), self.language)
-                    log.info(f"Retrieved Item Shop for {today_date}")
+                    if self.config.twitter_enabled:
+                        log.info("Athena => Sending image to twitter...")
+                        start = time.time_ns()
+                        self.tweet_image(date)
+                        log.info(f"Athena => Image Sent in => {((time.time_ns()-start)/1000000000)}\n")
 
-                    if self.GenerateImage(today_date, itemshop):
-                        self.itemshop_hash = itemshop.get("hash")
-                        if self.twitterEnabled:
-                            self.Tweet(today_date)
+                    self.tracker.update_hash(new_hash)
+                    log.info("Athena => Waiting for new updates...")
+            # except Exception as error:
+            #     log.error(
+            #         f"Athena => Error occured => {error}\n"
+            #         "Athena => Report this error + more details to developers.\n"
+            #         "Discord => Liimiitz#1538\n"
+            #         "Discord => Ali Hashemi#2201\n"
+            #     )
 
-            sleep(15)
+            time.sleep(15)
 
-    def LoadConfiguration(self) -> bool:
-        """
-        Set the configuration values specified in configuration.json
-
-        Return True if configuration sucessfully loaded.
-        """
-
-        configuration = json.loads(self.utility.ReadFile("configuration", "json"))
-
-        try:
-            # self.delay = configuration.get("delayStart", 0)
-            self.language = configuration.get("language", "en")
-            self.sendOnStart = configuration.get("sendOnStart", False)
-            self.checkForUpdates = configuration.get("checkForUpdates", 10)
-            self.apiKey = configuration.get("fortniteAPI", {}).get("apiKey")
-            self.supportACreator = configuration.get("supportACreator")
-
-            twitter_data = configuration.get("twitter", {})
-            self.twitterEnabled = twitter_data.get("enabled", False)
-            self.twitterAPIKey = twitter_data.get("apiKey")
-            self.twitterAPISecret = twitter_data.get("apiSecret")
-            self.twitterAccessToken = twitter_data.get("accessToken")
-            self.twitterAccessSecret = twitter_data.get("accessSecret")
-
-            log.info("Loaded configuration")
-
-            return True
-        except Exception as e:
-            log.critical(f"Failed to load configuration, {e}")
-
-        return False
-
-    def GenerateImage(self, date: str, itemShop: dict):
+    def generate_image(self, date: str, itemshop: dict) -> bool:
         """
         Generate the Item Shop image using the provided Item Shop.
 
         Return True if image sucessfully saved.
         """
-
         try:
-            featured = itemShop["featured"]["entries"]
-            daily = itemShop["daily"]["entries"]
+            featured = itemshop["featured"]["entries"]
+            daily = itemshop["daily"]["entries"]
 
-            if (len(featured) <= 0) or (len(daily) <= 0):
-                raise Exception(
-                    f"Featured: {len(featured)}, Daily: {len(daily)}")
-
-            if (len(featured) >= 1):
-                width = 6
-                height = max(ceil(len(featured) / 3), ceil(len(daily) / 3))
-
-                rowsDaily = 3
-                rowsFeatured = 3
-
-                dailyStartX = ((340 * 3))
-
-            if (len(featured) >= 18):
-                width = 9
-                height = max(ceil(len(featured) / 6), ceil(len(daily) / 6))
-
-                rowsDaily = 3
-                rowsFeatured = 6
-
-                dailyStartX = ((340 * 6))
+            if (len(featured) <= 0) and (len(daily) <= 0):
+                log.error(f"ImageGeneration => Featured: {len(featured)}, Daily: {len(daily)}")
+                return False
 
             if (len(featured) >= 18) and (len(daily) >= 18):
                 width = 12
@@ -132,93 +93,83 @@ class Athena:
                 rowsFeatured = 6
 
                 dailyStartX = ((340 * 6) + 100)
+            elif len(featured) >= 18:
+                width = 9
+                height = max(ceil(len(featured) / 6), ceil(len(daily) / 6))
 
-        except Exception as e:
-            log.critical(f"Failed to parse Item Shop Featured and Daily items, {e}")
+                rowsDaily = 3
+                rowsFeatured = 6
+
+                dailyStartX = ((340 * 6))
+            else:  # len(featured) >= 1
+                width = 6
+                height = max(ceil(len(featured) / 3), ceil(len(daily) / 3))
+
+                rowsDaily = 3
+                rowsFeatured = 3
+
+                dailyStartX = ((340 * 3))
+        except Exception as error:
+            log.critical(f"ImageGeneration => Failed to parse Item Shop Featured and Daily items, {error}")
             return False
 
         # Determine the max amount of rows required for the current
         # Item Shop when there are 3 columns for both Featured and Daily.
         # This allows us to determine the image height.
-
         shopImage = Image.new("RGB", (((340 * width) - 30), (530 * height) + 350))
 
-        try:
-            background = ImageUtil.Open(self, "background.png")
-            background = ImageUtil.RatioResize(
-                self, background, shopImage.width, shopImage.height
-            )
-            shopImage.paste(
-                background, ImageUtil.CenterX(
-                    self, background.width, shopImage.width)
-            )
-        except FileNotFoundError:
-            log.warning(
-                "Failed to open background.png, defaulting to dark gray")
-            shopImage.paste(
-                (34, 37, 40), [0, 0, shopImage.size[0], shopImage.size[1]])
+        background = self.image_utility.open("background.png")
+        if background is not None:
+            background = self.image_utility.resize(background, shopImage.width, shopImage.height)
+            shopImage.paste(background, self.image_utility.align_center(background.width, shopImage.width))
+        else:
+            log.warning("ImageGeneration => Failed to open background.png, defaulting to dark gray")
+            shopImage.paste((34, 37, 40), [0, 0, shopImage.width, shopImage.height])
 
         canvas = ImageDraw.Draw(shopImage)
-        font = ImageUtil.Font(self, 80)
+        font = self.image_utility.font(80)
 
         textWidth, _ = font.getsize("FORTNITE ITEM SHOP")
-        canvas.text(ImageUtil.CenterX(self, textWidth, shopImage.width, 30), "FORTNITE ITEM SHOP", (255, 255, 255), font=font)
+        canvas.text(self.image_utility.align_center(textWidth, shopImage.width, 30), "FORTNITE ITEM SHOP", (255, 255, 255), font=font)
         textWidth, _ = font.getsize(date.upper())
-        canvas.text(ImageUtil.CenterX(self, textWidth, shopImage.width, 120), date.upper(), (255, 255, 255), font=font)
+        canvas.text(self.image_utility.align_center(textWidth, shopImage.width, 120), date.upper(), (255, 255, 255), font=font)
 
-        if itemShop["featured"] is not None:
-            canvas.text((20, 240), "FEATURED", (255, 255, 255), font=font, anchor=None, spacing=4, align="left")
+        canvas.text((20, 240), "FEATURED", (255, 255, 255), font=font, anchor=None, spacing=4, align="left")
+        canvas.text((shopImage.width - 230, 240), "DAILY", (255, 255, 255), font=font, anchor=None, spacing=4, align="right")
 
-        if itemShop["daily"] is not None:
-            canvas.text((shopImage.width - 230, 240), "DAILY", (255, 255, 255), font=font, anchor=None, spacing=4, align="right")
-
-        # Track grid position
-        i = 0
-
-        for item in featured:
-            card = Athena.GenerateCard(self, item)
-
+        for index, item in enumerate(featured):
+            card = self.generate_card(item)
             if card is not None:
                 shopImage.paste(
                     card,
                     (
-                        (20 + ((i % rowsFeatured) * (310 + 20))),
-                        (350 + ((i // rowsFeatured) * (510 + 20))),
+                        (20 + ((index % rowsFeatured) * (310 + 20))),
+                        (350 + ((index // rowsFeatured) * (510 + 20))),
                     ),
                     card,
                 )
 
-                i += 1
-
-        # Reset grid position
-        i = 0
-
-        for item in daily:
-            card = Athena.GenerateCard(self, item)
-
+        for index, item in enumerate(daily):
+            card = self.generate_card(item)
             if card is not None:
                 shopImage.paste(
                     card,
                     (
-                        (dailyStartX + ((i % rowsDaily) * (310 + 20))),
-                        (350 + ((i // rowsDaily) * (510 + 20))),
+                        (dailyStartX + ((index % rowsDaily) * (310 + 20))),
+                        (350 + ((index // rowsDaily) * (510 + 20))),
                     ),
                     card,
                 )
-
-                i += 1
 
         try:
             shopImage.save("itemshop.jpeg", optimize=True, quality=85)
-            log.info("Generated Item Shop image")
-
             return True
-        except Exception as e:
-            log.critical(f"Failed to save Item Shop image, {e}")
+        except Exception as error:
+            log.critical(f"ImageGeneration => Failed to save Item Shop image => {error}")
+        return False
 
-    def GenerateCard(self, item: dict):
+    def generate_card(self, item: dict) -> Image.Image:
         """Return the card image for the provided Fortnite Item Shop item."""
-
         try:
             name = item["items"][0]["name"].lower()
             rarity = item["items"][0]["rarity"]["value"].lower()
@@ -234,10 +185,9 @@ class Athena:
                 icon = item["bundle"]["image"]
                 name = item["bundle"]["name"].lower()
                 category = "Bundle".lower()
-        except Exception as e:
-            log.error(f"Failed to parse item {name}, {e}")
-
-            return
+        except Exception as error:
+            log.error(f"CardGeneration => Failed to parse item {name} => {error}")
+            return None
 
         if rarity == "frozen":
             blendColor = (148, 223, 255)
@@ -275,74 +225,58 @@ class Athena:
 
         card = Image.new("RGBA", (310, 510))
 
-        try:
-            layer = ImageUtil.Open(
-                self, f"./shopTemplates/{rarity.capitalize()}BG.png")
-        except FileNotFoundError:
-            log.warn(
-                f"Failed to open {rarity.capitalize()}BG.png, defaulted to Common")
-            layer = ImageUtil.Open(self, "./shopTemplates/CommonBG.png")
+        layer = self.image_utility.open(f"shopTemplates/{rarity.capitalize()}BG.png")
+        if layer is None:
+            log.warn(f"CardGeneration => Failed to open {rarity.capitalize()}BG.png, defaulted to Common")
+            layer = self.image_utility.open("shopTemplates/CommonBG.png")
         card.paste(layer)
 
-        icon = ImageUtil.Download(self, icon)
-        if (category == "outfit") or (category == "emote"):
-            icon = ImageUtil.RatioResize(self, icon, 285, 365)
-        elif category == "wrap":
-            icon = ImageUtil.RatioResize(self, icon, 230, 310)
-        else:
-            icon = ImageUtil.RatioResize(self, icon, 310, 390)
-        if (category == "outfit") or (category == "emote"):
-            card.paste(icon, ImageUtil.CenterX(self, icon.width, card.width), icon)
-        else:
-            card.paste(icon, ImageUtil.CenterX(self, icon.width, card.width, 15), icon)
+        icon = self.image_utility.download(icon)
+        if icon is not None:
+            if (category == "outfit") or (category == "emote"):
+                icon = self.image_utility.resize(icon, 285, 365)
+            elif category == "wrap":
+                icon = self.image_utility.resize(icon, 230, 310)
+            else:
+                icon = self.image_utility.resize(icon, 310, 390)
+            if (category == "outfit") or (category == "emote"):
+                card.paste(icon, self.image_utility.align_center(icon.width, card.width), icon)
+            else:
+                card.paste(icon, self.image_utility.align_center(icon.width, card.width, 15), icon)
 
-        try:
-            layer = ImageUtil.Open(
-                self, f"./shopTemplates/{rarity.capitalize()}OV.png")
-        except FileNotFoundError:
-            log.warn(
-                f"Failed to open {rarity.capitalize()}OV.png, defaulted to Common")
-            layer = ImageUtil.Open(self, "./shopTemplates/CommonOV.png")
-
+        layer = self.image_utility.open(f"shopTemplates/{rarity.capitalize()}OV.png")
+        if layer is None:
+            log.warn(f"CardGeneration => Failed to open {rarity.capitalize()}OV.png, defaulted to Common")
+            layer = self.image_utility.open("shopTemplates/CommonOV.png")
         card.paste(layer, layer)
 
         canvas = ImageDraw.Draw(card)
 
-        vbucks = ImageUtil.Open(self, "vbucks.png")
-        vbucks = ImageUtil.RatioResize(self, vbucks, 40, 40)
+        vbucks = self.image_utility.resize(
+            self.image_utility.open("vbucks.png"),
+            40, 40
+        )
 
-        font = ImageUtil.Font(self, 40)
+        font = self.image_utility.font(40)
         price = str(f"{price:,}")
         textWidth, _ = font.getsize(price)
 
-        canvas.text(ImageUtil.CenterX(self, ((textWidth - 5) - vbucks.width), card.width, 347), price, (255, 255, 255), font=font)
-        card.paste(vbucks, ImageUtil.CenterX(self, (vbucks.width + (textWidth + 5)), card.width, 350), vbucks)
+        canvas.text(self.image_utility.align_center(((textWidth - 5) - vbucks.width), card.width, 347), price, (255, 255, 255), font=font)
+        card.paste(vbucks, self.image_utility.align_center((vbucks.width + (textWidth + 5)), card.width, 350), vbucks)
 
-        font = ImageUtil.Font(self, 40)
         itemName = name.upper().replace(" OUTFIT", "").replace(" PICKAXE", "").replace(" BUNDLE", "")
-
-        if(category == "bundle"):
+        if category == "bundle":
             itemName = name.upper().replace(" BUNDLE", "")
 
-        textWidth, _ = font.getsize(itemName)
+        font, text_width, change = self.image_utility.fit_text(itemName, 40, 260)
+        canvas.text(self.image_utility.align_center(text_width, card.width, (400 + (change / 2))), itemName, (255, 255, 255), font=font)
 
-        change = 0
-        if textWidth >= 280:
-            # Ensure that the item name does not overflow
-            font, textWidth, change = ImageUtil.FitTextX(self, itemName, 40, 260)
-        canvas.text(ImageUtil.CenterX(self, textWidth, card.width, (400 + (change / 2))), itemName, (255, 255, 255), font=font)
-
-        font = ImageUtil.Font(self, 40)
-        textWidth, _ = font.getsize(f"{category.upper()}")
-
-        change = 0
-        if textWidth >= 280:
-            # Ensure that the item rarity/type does not overflow
-            font, textWidth, change = ImageUtil.FitTextX(self, f"{category.upper()}", 40, 260)
-        canvas.text(ImageUtil.CenterX(self, textWidth, card.width, (450 + (change / 2))), f"{category.upper()}", blendColor, font=font)
+        categoryName = category.upper()
+        font, text_width, change = self.image_utility.fit_text(categoryName, 40, 260)
+        canvas.text(self.image_utility.align_center(text_width, card.width, (450 + (change / 2))), categoryName, blendColor, font=font)
         return card
 
-    def Tweet(self, date: str):
+    def tweet_image(self, date: str):
         """
         Tweet the current `Item Shop` image to Twitter using the credentials provided
         in `configuration.json`.
@@ -369,7 +303,6 @@ class Athena:
             body = f"{body}\n\nUse code: {self.supportACreator} in the item shop!"
 
         try:
-
             with open("itemshop.jpeg", "rb") as shopImage:
                 twitterAPI.PostUpdate(body, media=shopImage)
 
@@ -382,5 +315,5 @@ if __name__ == "__main__":
     try:
         Athena()
     except KeyboardInterrupt:
-        log.info("Exiting...")
-        exit()
+        log.info("CTRL + C Received >> Exiting...")
+        exit(0)
