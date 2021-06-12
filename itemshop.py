@@ -284,10 +284,10 @@ class Athena:
 
         try:
             twitterAPI = twitter.Api(
-                consumer_key=self.twitterAPIKey,
-                consumer_secret=self.twitterAPISecret,
-                access_token_key=self.twitterAccessToken,
-                access_token_secret=self.twitterAccessSecret,
+                consumer_key=self.config.twitter_api_key,
+                consumer_secret=self.config.twitter_api_secret,
+                access_token_key=self.config.twitter_access_token,
+                access_token_secret=self.config.twitter_access_secret,
             )
 
             twitterAPI.VerifyCredentials()
@@ -299,8 +299,8 @@ class Athena:
 
         body = f"Battle Royale - #Fortnite Item Shop | {date}"
 
-        if self.supportACreator is not None:
-            body = f"{body}\n\nUse code: {self.supportACreator} in the item shop!"
+        if self.config.support_a_creator is not None:
+            body = f"{body}\n\nUse code: {self.config.support_a_creator} in the item shop!"
 
         try:
             with open("itemshop.jpeg", "rb") as shopImage:
